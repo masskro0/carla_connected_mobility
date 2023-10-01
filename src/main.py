@@ -199,7 +199,7 @@ def run_simulation(client, sync=True):
             settings = world.get_settings()
             traffic_manager.set_synchronous_mode(True)
             settings.synchronous_mode = True
-            #settings.fixed_delta_seconds = 0.05    # Everything is too fast
+            # settings.fixed_delta_seconds = 0.05    # Everything is too fast
             world.apply_settings(settings)
 
         # Set spectator viewpoint.
@@ -239,8 +239,8 @@ def run_simulation(client, sync=True):
         # Then, SensorManager can be used to spawn RGBCamera, LiDARs and SemanticLiDARs as needed
         # and assign each of them to a grid position,
         cam = SensorManager(world, display_manager,
-                      carla.Transform(carla.Location(x=0.5, z=1.5)),
-                      ego_vehicle, {}, display_pos=[0, 0])
+                            carla.Transform(carla.Location(x=0.5, z=1.5)),
+                            ego_vehicle, {}, display_pos=[0, 0])
         while not cam.ready:
             pass
 
@@ -257,9 +257,8 @@ def run_simulation(client, sync=True):
         call_exit = False
         braking = False
         dist_printed = False
-        env = NetworkEnvironment()
+        env = NetworkEnvironment(display_manager, [0, 1])
 
-        # TODO: Make an extra class which extends carla.Actor.
         ped_device = NetworkDevice(pedestrian, 20, 1)
         vehicle_device = NetworkDevice(ego_vehicle, 45, 2)
         env.add_device(ped_device)
@@ -337,8 +336,6 @@ def main():
 
 
 if __name__ == '__main__':
-    #main()
     with open("config.yaml", "r") as cfg_file:
         parameters = yaml.safe_load(cfg_file)
         main()
-
