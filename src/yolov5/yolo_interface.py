@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import cv2
 import torch
 import numpy as np
 
@@ -9,6 +8,7 @@ from src.yolov5.utils.augmentations import letterbox
 from src.yolov5.utils.plots import Annotator, colors
 from src.yolov5.utils.torch_utils import select_device
 from src.yolov5.utils.general import check_img_size, non_max_suppression, scale_boxes
+
 
 def load_model(device, data, weights, half, img_size):
     dnn = False
@@ -23,7 +23,6 @@ def load_model(device, data, weights, half, img_size):
     return model, stride, names
 
 
-#def detect(model, im0, img_size, conf_thres, iou_thres, max_det, names):
 def detect(model, im0, img_size, conf_thres, iou_thres, max_det, names):
     augment = False
     visualize = False
@@ -41,9 +40,13 @@ def detect(model, im0, img_size, conf_thres, iou_thres, max_det, names):
     pred = model(image, augment=augment, visualize=visualize)
     pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
     annotator = Annotator(np.ascontiguousarray(im0), line_width=2, example=str(names))
+    people_list = []
     for i, det in enumerate(pred):
         if len(det):
             det[:, :4] = scale_boxes(image.shape[2:], det[:, :4], im0.shape).round()
             for *xyxy, conf, cls in reversed(det):
-                annotator.box_label(xyxy, f'{names[int(cls)]} {conf:.2f}', color=colors(int(cls), True))
-    return annotator.result()
+                label = names[int(cls)]
+                if label == "person":
+                    people_list.append(xyxy)
+                annotator.box_label(xyxy, f'{label} {conf:.2f}', color=colors(int(cls), True))
+    return annotator.result(), people_list

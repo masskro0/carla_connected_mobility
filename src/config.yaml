@@ -1,0 +1,17 @@
+carla:
+    host: "127.0.0.1"
+    port: 2000
+    timeout: 5.0
+    vehicle_model: "vehicle.audi.etron"
+    pedestrian_model: "walker.pedestrian.0011"
+    screen_height: 640
+    screen_width: 640
+yolo:
+    device: "cuda:0"
+    data: "weights/coco.yaml"
+    weights: "weights/yolov5m.pt"
+    half: false
+    img_size: 640
+    conf_thres: 0.7
+    iou_thres: 0.65
+    max_det: 1000

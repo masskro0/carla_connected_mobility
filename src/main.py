@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
 import glob
+import yaml
+import math
 import os
 import sys
+import shapely
 
 from yolov5.yolo_interface import detect, load_model
 
@@ -15,7 +18,6 @@ except IndexError:
     pass
 
 import carla
-import random
 import numpy as np
 
 try:
@@ -69,6 +71,64 @@ class DisplayManager:
         return self.display is not None
 
 
+class NetworkDevice:
+    def __init__(self, actor: carla.Actor, max_range: int, id_num: int):
+        self.trajectories = []
+        self.actor = actor
+        self.max_range = max_range
+        self.id = id_num
+
+    def receive(self, trajectory):
+        self.trajectories.append(trajectory)
+
+    def reset(self):
+        self.trajectories = []
+
+
+class NetworkEnvironment:
+
+    def __init__(self, display_man, display_pos):
+        self.devices = []
+        self.surface = None
+        self.display_man = display_man
+        self.display_man.add_sensor(self)
+        self.display_pos = display_pos
+
+    def add_device(self, device: NetworkDevice):
+        self.devices.append(device)
+
+    def check_broadcasts(self):
+        for i in range(len(self.devices)):
+            self.devices[i].reset()
+            j = i + 1
+            while j < len(self.devices):
+                dev1_loc = self.devices[i].actor.trajectory.location
+                dev2_loc = self.devices[j].actor.trajectory.location
+                dist = math.sqrt((dev1_loc.x - dev2_loc.x) ** 2 + (dev1_loc.y - dev2_loc.y) ** 2)
+                if dist <= self.devices[i].max_range:
+                    self.devices[i].receive(self.devices[j].trajectory)
+                if dist <= self.devices[j].max_range:
+                    self.devices[j].receive(self.devices[i].trajectory)
+                j += 1
+
+    def display_trajectories(self):
+        if self.display_man.render_enabled():
+            # TODO: Get right size.
+            self.surface = pygame.surface.Surface((400, 400))
+            self.surface.fill((0, 0, 0))
+            for dev in self.devices:
+                start = dev.actor.trajectory.location
+                start = (start.x, start.y)
+                end = dev.actor.trajectory.get_up_vector()
+                end = (start[0] + end.x, start[1] + end.y)
+                pygame.draw.line(self.surface, "blue", start, end)
+
+    def render(self):
+        if self.surface is not None:
+            offset = self.display_man.get_display_offset(self.display_pos)
+            self.display_man.display.blit(self.surface, offset)
+
+
 class SensorManager:
     def __init__(self, world, display_man, transform, attached, sensor_options, display_pos):
         self.surface = None
@@ -77,24 +137,17 @@ class SensorManager:
         self.display_pos = display_pos
         self.sensor = self.init_sensor(transform, attached, sensor_options)
         self.display_man.add_sensor(self)
-
-        device = "cuda:0"
-        data = "coco.yaml"
-        weights = "yolov5m.pt"
-        half = False
-        self.img_size = 640
-        self.conf_thres = 0.5
-        self.iou_thres = 0.45
-        self.max_det = 1000
         self.ready = False
-        self.model, self.stride, self.names = load_model(device, data, weights, half, self.img_size)
+        self.model, self.stride, self.names = load_model(parameters["yolo"]["device"], parameters["yolo"]["data"],
+                                                         parameters["yolo"]["weights"], parameters["yolo"]["half"],
+                                                         parameters["yolo"]["img_size"])
         self.ready = True
+        self.people_list = []
 
     def init_sensor(self, transform, attached, sensor_options):
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
-        disp_size = self.display_man.get_display_size()
-        camera_bp.set_attribute('image_size_x', str(disp_size[0]))
-        camera_bp.set_attribute('image_size_y', str(disp_size[1]))
+        camera_bp.set_attribute('image_size_x', parameters["yolo"]["img_size"])
+        camera_bp.set_attribute('image_size_y', parameters["yolo"]["img_size"])
 
         for key in sensor_options:
             camera_bp.set_attribute(key, sensor_options[key])
@@ -113,7 +166,9 @@ class SensorManager:
         array = np.reshape(array, (image.height, image.width, 4))
         array = array[:, :, :3]
         array = array[:, :, ::-1]
-        annotated = detect(self.model, array, self.img_size, self.conf_thres, self.iou_thres, self.max_det, self.names)
+        annotated, self.people_list = detect(self.model, array, parameters["yolo"]["img_size"],
+                                             parameters["yolo"]["conf_thres"], parameters["yolo"]["iou_thres"],
+                                             parameters["yolo"]["max_det"], self.names)
 
         if self.display_man.render_enabled():
             self.surface = pygame.surfarray.make_surface(annotated.swapaxes(0, 1))
@@ -134,14 +189,11 @@ def run_simulation(client, sync=True):
 
     display_manager = None
     actor_list = []
-    height = 640
-    width = 640
+    world = client.get_world()
+    original_settings = world.get_settings()
 
     try:
         # Getting the world and
-        world = client.get_world()
-        original_settings = world.get_settings()
-
         if sync:
             traffic_manager = client.get_trafficmanager(8000)
             settings = world.get_settings()
@@ -158,8 +210,8 @@ def run_simulation(client, sync=True):
         spectator.set_transform(transform)
 
         # Spawn ego vehicle.
-        vehicle_blueprint = world.get_blueprint_library().find("vehicle.audi.etron")
-        ego_location = carla.Location(x=60, y=130.5, z=0.600000)
+        vehicle_blueprint = world.get_blueprint_library().find(parameters["carla"]["vehicle_model"])
+        ego_location = carla.Location(x=65, y=130.5, z=0.600000)
         ego_rotation = carla.Rotation(pitch=0.0, yaw=-179.494202, roll=0.0)
         ego_position = carla.Transform(ego_location, ego_rotation)
         ego_vehicle: carla.Vehicle = world.spawn_actor(vehicle_blueprint, ego_position)
@@ -167,7 +219,7 @@ def run_simulation(client, sync=True):
 
         pedestrian_blueprint = None
         for ped in world.get_blueprint_library().filter("walker"):
-            if ped.id == "walker.pedestrian.0011":
+            if ped.id == parameters["carla"]["pedestrian_model"]:
                 pedestrian_blueprint = ped
                 break
         if pedestrian_blueprint is None:
@@ -181,7 +233,8 @@ def run_simulation(client, sync=True):
 
         # Display Manager organize all the sensors an its display in a window
         # If can easily configure the grid and the total window size
-        display_manager = DisplayManager(grid_size=[1, 1], window_size=[width, height])
+        display_manager = DisplayManager(grid_size=[1, 2], window_size=[parameters["carla"]["screen_width"]*2,
+                                                                        parameters["carla"]["height"]])
 
         # Then, SensorManager can be used to spawn RGBCamera, LiDARs and SemanticLiDARs as needed
         # and assign each of them to a grid position,
@@ -202,6 +255,15 @@ def run_simulation(client, sync=True):
 
         # Simulation loop
         call_exit = False
+        braking = False
+        dist_printed = False
+        env = NetworkEnvironment()
+
+        # TODO: Make an extra class which extends carla.Actor.
+        ped_device = NetworkDevice(pedestrian, 20, 1)
+        vehicle_device = NetworkDevice(ego_vehicle, 45, 2)
+        env.add_device(ped_device)
+        env.add_device(vehicle_device)
         while True:
             # Carla Tick
             if sync:
@@ -212,14 +274,36 @@ def run_simulation(client, sync=True):
             # Render received data
             display_manager.render()
 
+            env.display_trajectories()
+            env.check_broadcasts()
+
             velocity = ego_vehicle.get_velocity().length() * 3.6
-            if velocity < 40.0:
+            if velocity < 50.0 and not braking:
                 vehicle_control.throttle = 0.7
             else:
                 vehicle_control.throttle = 0.0
+
+            for person in cam.people_list:
+                # TODO: determine whether person is on the road.
+                on_the_road = True
+                if on_the_road and not braking:
+                    braking = True
+                    vehicle_control.brake = 1
+                    vehicle_control.throttle = 0
             ego_vehicle.apply_control(vehicle_control)
 
-            if pedestrian.get_location().x >= -3.8:
+            if velocity < 0.1 and braking and not dist_printed:
+                dist_printed = True
+                ego_loc = ego_vehicle.get_location()
+                ped_loc = pedestrian.get_location()
+                dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
+                print(dist)
+
+            if dist_printed:
+                pedestrian_control.direction.x = 0
+                pedestrian_control.direction.y = 0
+                pedestrian.apply_control(pedestrian_control)
+            elif pedestrian.get_location().x >= -3.8:
                 pedestrian_control.direction.x = 0
                 pedestrian_control.direction.y = 1
                 pedestrian.apply_control(pedestrian_control)
@@ -245,14 +329,16 @@ def run_simulation(client, sync=True):
 
 def main():
     try:
-        host = '127.0.0.1'
-        port = 2000
-        client = carla.Client(host, port)
-        client.set_timeout(5.0)
+        client = carla.Client(parameters["carla"]["host"], parameters["carla"]["port"])
+        client.set_timeout(parameters["carla"]["timeout"])
         run_simulation(client)
     except KeyboardInterrupt:
         pass
 
 
 if __name__ == '__main__':
-    main()
+    #main()
+    with open("config.yaml", "r") as cfg_file:
+        parameters = yaml.safe_load(cfg_file)
+        main()
+
