@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import torch
 import numpy as np
 
@@ -13,8 +11,6 @@ from src.yolov5.utils.general import check_img_size, non_max_suppression, scale_
 def load_model(device, data, weights, half, img_size):
     dnn = False
     device = select_device(device, 1)
-    data = str(Path('weights/' + data))
-    weights = str(Path('weights/' + weights))
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     img_sz = [img_size, img_size]

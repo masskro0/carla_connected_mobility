@@ -1,31 +1,17 @@
 #!/usr/bin/env python
 
-import glob
-import yaml
 import math
-import os
 import sys
-import shapely
-
-from yolov5.yolo_interface import detect, load_model
-
-try:
-    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
-        sys.version_info.major,
-        sys.version_info.minor,
-        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
-except IndexError:
-    pass
+import yaml
 
 import carla
 import numpy as np
+import pygame
+from pygame.locals import K_ESCAPE
+from pygame.locals import K_q
+import shapely
 
-try:
-    import pygame
-    from pygame.locals import K_ESCAPE
-    from pygame.locals import K_q
-except ImportError:
-    raise RuntimeError('cannot import pygame, make sure pygame package is installed')
+from yolov5.yolo_interface import detect, load_model
 
 
 class DisplayManager:
@@ -102,13 +88,13 @@ class NetworkEnvironment:
             self.devices[i].reset()
             j = i + 1
             while j < len(self.devices):
-                dev1_loc = self.devices[i].actor.trajectory.location
-                dev2_loc = self.devices[j].actor.trajectory.location
+                dev1_loc = self.devices[i].actor.get_transform().location
+                dev2_loc = self.devices[j].actor.get_transform().location
                 dist = math.sqrt((dev1_loc.x - dev2_loc.x) ** 2 + (dev1_loc.y - dev2_loc.y) ** 2)
                 if dist <= self.devices[i].max_range:
-                    self.devices[i].receive(self.devices[j].trajectory)
+                    self.devices[i].receive(self.devices[j].actor.get_transform())
                 if dist <= self.devices[j].max_range:
-                    self.devices[j].receive(self.devices[i].trajectory)
+                    self.devices[j].receive(self.devices[i].actor.get_transform())
                 j += 1
 
     def display_trajectories(self):
@@ -117,9 +103,9 @@ class NetworkEnvironment:
             self.surface = pygame.surface.Surface((400, 400))
             self.surface.fill((0, 0, 0))
             for dev in self.devices:
-                start = dev.actor.trajectory.location
+                start = dev.actor.get_transform().location
                 start = (start.x, start.y)
-                end = dev.actor.trajectory.get_up_vector()
+                end = dev.actor.get_transform().get_up_vector()
                 end = (start[0] + end.x, start[1] + end.y)
                 pygame.draw.line(self.surface, "blue", start, end)
 
@@ -127,6 +113,9 @@ class NetworkEnvironment:
         if self.surface is not None:
             offset = self.display_man.get_display_offset(self.display_pos)
             self.display_man.display.blit(self.surface, offset)
+
+    def destroy(self):
+        pass
 
 
 class SensorManager:
@@ -146,8 +135,8 @@ class SensorManager:
 
     def init_sensor(self, transform, attached, sensor_options):
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
-        camera_bp.set_attribute('image_size_x', parameters["yolo"]["img_size"])
-        camera_bp.set_attribute('image_size_y', parameters["yolo"]["img_size"])
+        camera_bp.set_attribute('image_size_x', str(parameters["yolo"]["img_size"]))
+        camera_bp.set_attribute('image_size_y', str(parameters["yolo"]["img_size"]))
 
         for key in sensor_options:
             camera_bp.set_attribute(key, sensor_options[key])
@@ -223,7 +212,7 @@ def run_simulation(client, sync=True):
                 pedestrian_blueprint = ped
                 break
         if pedestrian_blueprint is None:
-            print("Couldn't find pedestrian blueprint. We are looking for a child model.")
+            print("Couldn't find pedestrian blueprint. It should be a child model.")
             sys.exit(1)
         pedestrian_location = carla.Location(x=-10.0, y=125.0, z=0.6)
         pedestrian_rotation = carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)
@@ -234,7 +223,7 @@ def run_simulation(client, sync=True):
         # Display Manager organize all the sensors an its display in a window
         # If can easily configure the grid and the total window size
         display_manager = DisplayManager(grid_size=[1, 2], window_size=[parameters["carla"]["screen_width"]*2,
-                                                                        parameters["carla"]["height"]])
+                                                                        parameters["carla"]["screen_height"]])
 
         # Then, SensorManager can be used to spawn RGBCamera, LiDARs and SemanticLiDARs as needed
         # and assign each of them to a grid position,
@@ -283,7 +272,7 @@ def run_simulation(client, sync=True):
                 vehicle_control.throttle = 0.0
 
             for person in cam.people_list:
-                # TODO: determine whether person is on the road.
+                # TODO: determine whether person is on the road (and relevant).
                 on_the_road = True
                 if on_the_road and not braking:
                     braking = True
