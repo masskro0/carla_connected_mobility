@@ -97,17 +97,53 @@ class NetworkEnvironment:
                     self.devices[j].receive(self.devices[i].actor.get_transform())
                 j += 1
 
-    def display_trajectories(self):
+    def display_trajectories(self, ego_vehicle):
+        # TODO: Many hardcoded values.
+        screen_size = 640
+        radius = 6
         if self.display_man.render_enabled():
-            # TODO: Get right size.
-            self.surface = pygame.surface.Surface((400, 400))
-            self.surface.fill((0, 0, 0))
+            self.surface = pygame.surface.Surface((screen_size, screen_size))
+            self.surface.fill((255, 255, 255))
+            ego_pos = ego_vehicle.get_location()
+            ego_pos = (ego_pos.x, ego_pos.y)
             for dev in self.devices:
                 start = dev.actor.get_transform().location
-                start = (start.x, start.y)
-                end = dev.actor.get_transform().get_up_vector()
-                end = (start[0] + end.x, start[1] + end.y)
-                pygame.draw.line(self.surface, "blue", start, end)
+                if dev.actor.type_id.startswith("walker"):
+                    color = "red"
+                    start = (int((start.x - ego_pos[0]) * 4 + screen_size // 2),
+                             int((start.y - ego_pos[1]) * 20 + screen_size // 2))
+                    end = dev.actor.get_transform().get_forward_vector() * 200.0
+                else:
+                    color = "blue"
+                    start = (int(start.x - ego_pos[0] + screen_size // 2), int(start.y - ego_pos[1] + screen_size // 2))
+                    end = dev.actor.get_transform().get_forward_vector() * (screen_size / 2)
+                end = (int(start[0] + end.x), int(start[1] + end.y))
+
+                dl = 10
+                if start[0] == end[0]:
+                    ycoords = [y for y in range(start[1], end[1], dl if start[1] < end[1] else -dl)]
+                    xcoords = [start[0]] * len(ycoords)
+                elif start[1] == end[1]:
+                    xcoords = [x for x in range(start[0], end[0], dl if start[0] < end[0] else -dl)]
+                    ycoords = [start[1]] * len(xcoords)
+                else:
+                    a = abs(end[0] - start[0])
+                    b = abs(end[1] - start[1])
+                    c = round(math.sqrt(a ** 2 + b ** 2))
+                    dx = dl * a / c
+                    dy = dl * b / c
+
+                    xcoords = [x for x in np.arange(start[0], end[0], dx if start[0] < end[0] else -dx)]
+                    ycoords = [y for y in np.arange(start[1], end[1], dy if start[1] < end[1] else -dy)]
+
+                next_coords = list(zip(xcoords[1::2], ycoords[1::2]))
+                last_coords = list(zip(xcoords[0::2], ycoords[0::2]))
+                for (x1, y1), (x2, y2) in zip(next_coords, last_coords):
+                    p1 = (round(x1), round(y1))
+                    p2 = (round(x2), round(y2))
+                    pygame.draw.line(self.surface, color, p1, p2, 3)
+                pygame.draw.circle(self.surface, color, start, radius)
+            pygame.display.flip()
 
     def render(self):
         if self.surface is not None:
@@ -262,7 +298,7 @@ def run_simulation(client, sync=True):
             # Render received data
             display_manager.render()
 
-            env.display_trajectories()
+            env.display_trajectories(ego_vehicle)
             env.check_broadcasts()
 
             velocity = ego_vehicle.get_velocity().length() * 3.6
