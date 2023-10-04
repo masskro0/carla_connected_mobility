@@ -80,7 +80,6 @@ class NetworkDevice:
         end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
         line2 = shapely.LineString([start, end])
 
-
         # TODO: determine whether there will be a crash or not. Not just based on hardcoded scenarios.
         max_deceleration = 200     # TODO: no idea how to get the right value.
         if line1.intersects(line2):
