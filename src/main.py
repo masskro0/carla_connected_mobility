@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+import argparse
 import math
+import os
 import sys
 import yaml
 
@@ -18,6 +20,8 @@ class DisplayManager:
     def __init__(self, grid_size, window_size):
         pygame.init()
         pygame.font.init()
+        # TODO
+        os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (1120, 0)
         self.display = pygame.display.set_mode(window_size, pygame.HWSURFACE | pygame.DOUBLEBUF)
 
         self.grid_size = grid_size
@@ -59,16 +63,33 @@ class DisplayManager:
 
 class NetworkDevice:
     def __init__(self, actor: carla.Actor, max_range: int, id_num: int):
-        self.trajectories = []
         self.actor = actor
         self.max_range = max_range
         self.id = id_num
+        self.prev_dist = None
+        self.deceleration = 0.0
 
     def receive(self, trajectory):
-        self.trajectories.append(trajectory)
+        start = (self.actor.get_transform().location.x, self.actor.get_transform().location.y)
+        end = self.actor.get_transform().get_forward_vector()   # TODO: scaling factor
+        end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
+        line1 = shapely.LineString([start, end])
 
-    def reset(self):
-        self.trajectories = []
+        start = (trajectory.location.x, trajectory.location.y)
+        end = trajectory.get_forward_vector()  # TODO: scaling factor
+        end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
+        line2 = shapely.LineString([start, end])
+
+
+        # TODO: determine whether there will be a crash or not. Not just based on hardcoded scenarios.
+        max_deceleration = 200     # TODO: no idea how to get the right value.
+        if line1.intersects(line2):
+            intersection = line1.intersection(line2)
+            actor_point = shapely.Point(self.actor.get_transform().location.x, self.actor.get_transform().location.y)
+            distance = intersection.distance(actor_point)
+            if self.prev_dist is not None and self.prev_dist > distance:
+                self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * distance * max_deceleration)
+            self.prev_dist = distance
 
 
 class NetworkEnvironment:
@@ -85,7 +106,6 @@ class NetworkEnvironment:
 
     def check_broadcasts(self):
         for i in range(len(self.devices)):
-            self.devices[i].reset()
             j = i + 1
             while j < len(self.devices):
                 dev1_loc = self.devices[i].actor.get_transform().location
@@ -99,10 +119,13 @@ class NetworkEnvironment:
 
     def display_trajectories(self, ego_vehicle):
         # TODO: Many hardcoded values.
-        screen_size = 640
+        screen_size_x = 800
+        screen_size_y = 480
         radius = 6
+        visual_scaling_factor_x = 4
+        visual_scaling_factor_y = 20
         if self.display_man.render_enabled():
-            self.surface = pygame.surface.Surface((screen_size, screen_size))
+            self.surface = pygame.surface.Surface((screen_size_x, screen_size_y))
             self.surface.fill((255, 255, 255))
             ego_pos = ego_vehicle.get_location()
             ego_pos = (ego_pos.x, ego_pos.y)
@@ -110,13 +133,14 @@ class NetworkEnvironment:
                 start = dev.actor.get_transform().location
                 if dev.actor.type_id.startswith("walker"):
                     color = "red"
-                    start = (int((start.x - ego_pos[0]) * 4 + screen_size // 2),
-                             int((start.y - ego_pos[1]) * 20 + screen_size // 2))
+                    start = (int((start.x - ego_pos[0]) * visual_scaling_factor_x + screen_size_x // 2),
+                             int((start.y - ego_pos[1]) * visual_scaling_factor_y + screen_size_y // 2))
                     end = dev.actor.get_transform().get_forward_vector() * 200.0
                 else:
                     color = "blue"
-                    start = (int(start.x - ego_pos[0] + screen_size // 2), int(start.y - ego_pos[1] + screen_size // 2))
-                    end = dev.actor.get_transform().get_forward_vector() * (screen_size / 2)
+                    start = (int(start.x - ego_pos[0] + screen_size_x // 2),
+                             int(start.y - ego_pos[1] + screen_size_y // 2))
+                    end = dev.actor.get_transform().get_forward_vector() * (screen_size_x / 2)
                 end = (int(start[0] + end.x), int(start[1] + end.y))
 
                 dl = 10
@@ -143,6 +167,7 @@ class NetworkEnvironment:
                     p2 = (round(x2), round(y2))
                     pygame.draw.line(self.surface, color, p1, p2, 3)
                 pygame.draw.circle(self.surface, color, start, radius)
+                pygame.draw.circle(self.surface, color, start, radius=dev.max_range*visual_scaling_factor_x, width=1)
             pygame.display.flip()
 
     def render(self):
@@ -171,8 +196,9 @@ class SensorManager:
 
     def init_sensor(self, transform, attached, sensor_options):
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
-        camera_bp.set_attribute('image_size_x', str(parameters["yolo"]["img_size"]))
-        camera_bp.set_attribute('image_size_y', str(parameters["yolo"]["img_size"]))
+        # TODO
+        camera_bp.set_attribute('image_size_x', str(800))
+        camera_bp.set_attribute('image_size_y', str(640))
 
         for key in sensor_options:
             camera_bp.set_attribute(key, sensor_options[key])
@@ -229,8 +255,8 @@ def run_simulation(client, sync=True):
 
         # Set spectator viewpoint.
         spectator: carla.Actor = world.get_spectator()
-        location = carla.Location(x=-12.780787, y=126.431847, z=3.760293)
-        rotation = carla.Rotation(pitch=-13.728911, yaw=37.675968, roll=0.000015)
+        location = carla.Location(x=-14.856689, y=131.858612, z=7.222219)
+        rotation = carla.Rotation(pitch=-31.648739, yaw=4.472778, roll=0.000018)
         transform = carla.Transform(location, rotation)
         spectator.set_transform(transform)
 
@@ -258,8 +284,13 @@ def run_simulation(client, sync=True):
 
         # Display Manager organize all the sensors an its display in a window
         # If can easily configure the grid and the total window size
-        display_manager = DisplayManager(grid_size=[1, 2], window_size=[parameters["carla"]["screen_width"]*2,
-                                                                        parameters["carla"]["screen_height"]])
+        if args.connected_mobility:
+            # TODO.
+            display_manager = DisplayManager(grid_size=[2, 1], window_size=[parameters["carla"]["screen_width"],
+                                                                            parameters["carla"]["screen_height"] + 480])
+        else:
+            display_manager = DisplayManager(grid_size=[1, 1], window_size=[parameters["carla"]["screen_width"],
+                                                                            parameters["carla"]["screen_height"]])
 
         # Then, SensorManager can be used to spawn RGBCamera, LiDARs and SemanticLiDARs as needed
         # and assign each of them to a grid position,
@@ -282,12 +313,15 @@ def run_simulation(client, sync=True):
         call_exit = False
         braking = False
         dist_printed = False
-        env = NetworkEnvironment(display_manager, [0, 1])
 
-        ped_device = NetworkDevice(pedestrian, 20, 1)
-        vehicle_device = NetworkDevice(ego_vehicle, 45, 2)
-        env.add_device(ped_device)
-        env.add_device(vehicle_device)
+        if args.connected_mobility:
+            env = NetworkEnvironment(display_manager, [1, 0])
+
+            # TODO: make configurable
+            ped_device = NetworkDevice(pedestrian, 20, 1)
+            vehicle_device = NetworkDevice(ego_vehicle, 55, 2)
+            env.add_device(ped_device)
+            env.add_device(vehicle_device)
         while True:
             # Carla Tick
             if sync:
@@ -298,8 +332,9 @@ def run_simulation(client, sync=True):
             # Render received data
             display_manager.render()
 
-            env.display_trajectories(ego_vehicle)
-            env.check_broadcasts()
+            if args.connected_mobility:
+                env.display_trajectories(ego_vehicle)
+                env.check_broadcasts()
 
             velocity = ego_vehicle.get_velocity().length() * 3.6
             if velocity < 50.0 and not braking:
@@ -307,13 +342,28 @@ def run_simulation(client, sync=True):
             else:
                 vehicle_control.throttle = 0.0
 
-            for person in cam.people_list:
-                # TODO: determine whether person is on the road (and relevant).
-                on_the_road = True
-                if on_the_road and not braking:
+            if not args.connected_mobility:
+                for person in cam.people_list:
+                    # TODO: determine whether person is on the road (and relevant).
+                    on_the_road = True
+                    if on_the_road and not braking:
+                        # TODO: ofc this is crap.
+                        ego_loc = ego_vehicle.get_location()
+                        ped_loc = pedestrian.get_location()
+                        dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
+                        if dist < 30.0:
+                            braking = True
+                            vehicle_control.brake = 1
+                            vehicle_control.throttle = 0
+
+            if args.connected_mobility:
+                if vehicle_device.deceleration > 0.005:
+                    # TODO: Release after danger is over.
                     braking = True
-                    vehicle_control.brake = 1
+                    print(vehicle_device.deceleration)
+                    vehicle_control.brake = vehicle_device.deceleration
                     vehicle_control.throttle = 0
+            print(vehicle_control)
             ego_vehicle.apply_control(vehicle_control)
 
             if velocity < 0.1 and braking and not dist_printed:
@@ -321,7 +371,7 @@ def run_simulation(client, sync=True):
                 ego_loc = ego_vehicle.get_location()
                 ped_loc = pedestrian.get_location()
                 dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
-                print(dist)
+                print("Vehicle-Pedestrian Distance: {}".format(dist))
 
             if dist_printed:
                 pedestrian_control.direction.x = 0
@@ -362,5 +412,8 @@ def main():
 
 if __name__ == '__main__':
     with open("config.yaml", "r") as cfg_file:
+        argparser = argparse.ArgumentParser(description="CARLA Autonomous Driving vs Connected Mobility")
+        argparser.add_argument("--connected_mobility", action="store_true", help="Enable connected mobility")
+        args = argparser.parse_args()
         parameters = yaml.safe_load(cfg_file)
         main()

@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+import sys
+sys.path.append("../")
 
 from src.yolov5.models.common import DetectMultiBackend
 from src.yolov5.utils.augmentations import letterbox
