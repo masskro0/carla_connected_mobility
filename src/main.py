@@ -68,27 +68,44 @@ class NetworkDevice:
         self.id = id_num
         self.prev_dist = None
         self.deceleration = 0.0
+        self.intersection_point = None
+        self.critical = False
 
-    def receive(self, trajectory):
+    def receive(self, other_actor):
+        max_diff = 1.0  # TODO
         start = (self.actor.get_transform().location.x, self.actor.get_transform().location.y)
-        end = self.actor.get_transform().get_forward_vector()   # TODO: scaling factor
+        end = self.actor.get_transform().get_forward_vector()  # TODO: scaling factor
         end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
         line1 = shapely.LineString([start, end])
 
-        start = (trajectory.location.x, trajectory.location.y)
-        end = trajectory.get_forward_vector()  # TODO: scaling factor
+        start = (other_actor.get_transform().location.x, other_actor.get_transform().location.y)
+        end = other_actor.get_transform().get_forward_vector()  # TODO: scaling factor
         end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
         line2 = shapely.LineString([start, end])
 
-        # TODO: determine whether there will be a crash or not. Not just based on hardcoded scenarios.
-        max_deceleration = 200     # TODO: no idea how to get the right value.
+        max_deceleration = 200  # TODO: no idea how to get the right value.
         if line1.intersects(line2):
+            if self.actor.get_velocity().length() == 0 or other_actor.get_velocity().length() == 0:
+                return
             intersection = line1.intersection(line2)
+            self.intersection_point = (intersection.x, intersection.y)
             actor_point = shapely.Point(self.actor.get_transform().location.x, self.actor.get_transform().location.y)
-            distance = intersection.distance(actor_point)
-            if self.prev_dist is not None and self.prev_dist > distance:
-                self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * distance * max_deceleration)
-            self.prev_dist = distance
+            this_distance = intersection.distance(actor_point)
+            this_time_of_arrival = this_distance / (self.actor.get_velocity().length())
+
+            other_point = shapely.Point(
+                (other_actor.get_transform().location.x, other_actor.get_transform().location.y))
+            other_distance = intersection.distance(other_point)
+            other_time_of_arrival = other_distance / (other_actor.get_velocity().length())
+
+            time_difference = abs(this_time_of_arrival - other_time_of_arrival)
+            if self.prev_dist is not None and self.prev_dist > this_distance and time_difference < max_diff:
+                self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * this_distance * max_deceleration)
+                self.critical = True
+            self.prev_dist = this_distance
+        else:
+            self.critical = False
+            self.intersection_point = None
 
 
 class NetworkEnvironment:
@@ -111,9 +128,9 @@ class NetworkEnvironment:
                 dev2_loc = self.devices[j].actor.get_transform().location
                 dist = math.sqrt((dev1_loc.x - dev2_loc.x) ** 2 + (dev1_loc.y - dev2_loc.y) ** 2)
                 if dist <= self.devices[i].max_range:
-                    self.devices[i].receive(self.devices[j].actor.get_transform())
+                    self.devices[i].receive(self.devices[j].actor)
                 if dist <= self.devices[j].max_range:
-                    self.devices[j].receive(self.devices[i].actor.get_transform())
+                    self.devices[j].receive(self.devices[i].actor)
                 j += 1
 
     def display_trajectories(self, ego_vehicle):
@@ -131,12 +148,12 @@ class NetworkEnvironment:
             for dev in self.devices:
                 start = dev.actor.get_transform().location
                 if dev.actor.type_id.startswith("walker"):
-                    color = "red"
+                    color = "blue"
                     start = (int((start.x - ego_pos[0]) * visual_scaling_factor_x + screen_size_x // 2),
                              int((start.y - ego_pos[1]) * visual_scaling_factor_y + screen_size_y // 2))
                     end = dev.actor.get_transform().get_forward_vector() * 200.0
                 else:
-                    color = "blue"
+                    color = "black"
                     start = (int(start.x - ego_pos[0] + screen_size_x // 2),
                              int(start.y - ego_pos[1] + screen_size_y // 2))
                     end = dev.actor.get_transform().get_forward_vector() * (screen_size_x / 2)
@@ -166,7 +183,15 @@ class NetworkEnvironment:
                     p2 = (round(x2), round(y2))
                     pygame.draw.line(self.surface, color, p1, p2, 3)
                 pygame.draw.circle(self.surface, color, start, radius)
-                pygame.draw.circle(self.surface, color, start, radius=dev.max_range*visual_scaling_factor_x, width=1)
+                pygame.draw.circle(self.surface, color, start, radius=dev.max_range * visual_scaling_factor_x, width=1)
+                if dev.intersection_point is not None and dev.id == 2:
+                    # TODO: Hardcoded ID.
+                    color = "green" if not dev.critical else "red"
+                    start = (
+                        int((dev.intersection_point[0] - ego_pos[0]) * visual_scaling_factor_x + screen_size_x // 2),
+                        int((dev.intersection_point[1] - ego_pos[1]) * visual_scaling_factor_y + screen_size_y // 2))
+                    pygame.draw.circle(self.surface, color, start, radius)
+
             pygame.display.flip()
 
     def render(self):
@@ -359,10 +384,9 @@ def run_simulation(client, sync=True):
                 if vehicle_device.deceleration > 0.005:
                     # TODO: Release after danger is over.
                     braking = True
-                    print(vehicle_device.deceleration)
                     vehicle_control.brake = vehicle_device.deceleration
                     vehicle_control.throttle = 0
-            print(vehicle_control)
+            # print(vehicle_control)
             ego_vehicle.apply_control(vehicle_control)
 
             if velocity < 0.1 and braking and not dist_printed:
