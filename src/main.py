@@ -20,8 +20,8 @@ class DisplayManager:
     def __init__(self, grid_size, window_size):
         pygame.init()
         pygame.font.init()
-        # TODO
-        os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (1120, 0)
+        absolute_x = pygame.display.Info().current_w - window_size[0]
+        os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (absolute_x, 0)
         self.display = pygame.display.set_mode(window_size, pygame.HWSURFACE | pygame.DOUBLEBUF)
 
         self.grid_size = grid_size
@@ -72,22 +72,22 @@ class NetworkDevice:
         self.critical = False
 
     def receive(self, other_actor):
-        max_diff = 1.0  # TODO
+        scaling_factor = parameters["carla"]["scaling_factor"]
         start = (self.actor.get_transform().location.x, self.actor.get_transform().location.y)
-        end = self.actor.get_transform().get_forward_vector()  # TODO: scaling factor
-        end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
-        line1 = shapely.LineString([start, end])
+        end = self.actor.get_transform().get_forward_vector()
+        end = (int(start[0] + end.x * scaling_factor), int(start[1] + end.y * scaling_factor))
+        this_line = shapely.LineString([start, end])
 
         start = (other_actor.get_transform().location.x, other_actor.get_transform().location.y)
-        end = other_actor.get_transform().get_forward_vector()  # TODO: scaling factor
-        end = (int(start[0] + end.x * 100.0), int(start[1] + end.y * 100.0))
-        line2 = shapely.LineString([start, end])
+        end = other_actor.get_transform().get_forward_vector()
+        end = (int(start[0] + end.x * scaling_factor), int(start[1] + end.y * scaling_factor))
+        other_line = shapely.LineString([start, end])
 
         max_deceleration = 200  # TODO: no idea how to get the right value.
-        if line1.intersects(line2):
+        if this_line.intersects(other_line):
             if self.actor.get_velocity().length() == 0 or other_actor.get_velocity().length() == 0:
                 return
-            intersection = line1.intersection(line2)
+            intersection = this_line.intersection(other_line)
             self.intersection_point = (intersection.x, intersection.y)
             actor_point = shapely.Point(self.actor.get_transform().location.x, self.actor.get_transform().location.y)
             this_distance = intersection.distance(actor_point)
@@ -99,7 +99,8 @@ class NetworkDevice:
             other_time_of_arrival = other_distance / (other_actor.get_velocity().length())
 
             time_difference = abs(this_time_of_arrival - other_time_of_arrival)
-            if self.prev_dist is not None and self.prev_dist > this_distance and time_difference < max_diff:
+            if (self.prev_dist is not None and self.prev_dist > this_distance
+                    and time_difference < parameters["cm"]["max_time_diff"]):
                 self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * this_distance * max_deceleration)
                 self.critical = True
             self.prev_dist = this_distance

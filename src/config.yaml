@@ -6,6 +6,7 @@ carla:
     pedestrian_model: "walker.pedestrian.0011"
     screen_height: 640
     screen_width: 800
+    scaling_factor: 100.0
 yolo:
     device: "cuda:0"
     data: "weights/coco.yaml"
@@ -15,3 +16,5 @@ yolo:
     conf_thres: 0.55
     iou_thres: 0.5
     max_det: 1000
+cm:     # Connected Mobility.
+    max_time_diff: 1.0
