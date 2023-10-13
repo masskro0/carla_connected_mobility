@@ -3,6 +3,7 @@
 import argparse
 import math
 import os
+import random
 import sys
 import yaml
 
@@ -70,6 +71,15 @@ class NetworkDevice:
         self.deceleration = 0.0
         self.intersection_point = None
         self.critical = False
+        
+    def force_stopping(self):
+        if self.actor.type_id.startswith("walker"):
+            self.deceleration = 1.0
+        elif self.actor.type_id.startswith("vehicle"):
+            max_deceleration = parameters["carla"]["max_deceleration"]
+            self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * self.prev_dist * max_deceleration)
+        else:
+            print("No matching type found for '{}'".format(self.actor.type_id))
 
     def receive(self, other_actor):
         scaling_factor = parameters["carla"]["scaling_factor"]
@@ -83,7 +93,6 @@ class NetworkDevice:
         end = (int(start[0] + end.x * scaling_factor), int(start[1] + end.y * scaling_factor))
         other_line = shapely.LineString([start, end])
 
-        max_deceleration = 200  # TODO: no idea how to get the right value.
         if this_line.intersects(other_line):
             if self.actor.get_velocity().length() == 0 or other_actor.get_velocity().length() == 0:
                 return
@@ -101,7 +110,6 @@ class NetworkDevice:
             time_difference = abs(this_time_of_arrival - other_time_of_arrival)
             if (self.prev_dist is not None and self.prev_dist > this_distance
                     and time_difference < parameters["cm"]["max_time_diff"]):
-                self.deceleration = (self.actor.get_velocity().length() ** 2) / (2 * this_distance * max_deceleration)
                 self.critical = True
             self.prev_dist = this_distance
         else:
@@ -117,6 +125,7 @@ class NetworkEnvironment:
         self.display_man = display_man
         self.display_man.add_sensor(self)
         self.display_pos = display_pos
+        self.stopping_actor_id = None
 
     def add_device(self, device: NetworkDevice):
         self.devices.append(device)
@@ -136,9 +145,9 @@ class NetworkEnvironment:
 
     def display_trajectories(self, ego_vehicle):
         # TODO: Many hardcoded values.
-        screen_size_x = 800
-        screen_size_y = 480
-        radius = 6
+        screen_size_x = parameters["carla"]["vis_trajectory_window_x"]
+        screen_size_y = parameters["carla"]["vis_trajectory_window_y"]
+        radius = parameters["carla"]["vis_point_radius"]
         visual_scaling_factor_x = 4
         visual_scaling_factor_y = 20
         if self.display_man.render_enabled():
@@ -146,7 +155,10 @@ class NetworkEnvironment:
             self.surface.fill((255, 255, 255))
             ego_pos = ego_vehicle.get_location()
             ego_pos = (ego_pos.x, ego_pos.y)
+            detected_hazards = []
             for dev in self.devices:
+                if dev.critical:
+                    detected_hazards.append(dev.id)
                 start = dev.actor.get_transform().location
                 if dev.actor.type_id.startswith("walker"):
                     color = "blue"
@@ -194,6 +206,12 @@ class NetworkEnvironment:
                     pygame.draw.circle(self.surface, color, start, radius)
 
             pygame.display.flip()
+            if len(detected_hazards) == 0:
+                return
+            if self.stopping_actor_id is None:
+                self.stopping_actor_id = random.choice(detected_hazards)
+            self.devices[self.stopping_actor_id - 1].force_stopping()
+
 
     def render(self):
         if self.surface is not None:
@@ -337,14 +355,12 @@ def run_simulation(client, sync=True):
         # Simulation loop
         call_exit = False
         braking = False
-        dist_printed = False
 
         if args.connected_mobility:
             env = NetworkEnvironment(display_manager, [1, 0])
 
-            # TODO: make configurable
-            ped_device = NetworkDevice(pedestrian, 20, 1)
-            vehicle_device = NetworkDevice(ego_vehicle, 55, 2)
+            ped_device = NetworkDevice(pedestrian, parameters["cm"]["max_range_pedestrian"], 1)
+            vehicle_device = NetworkDevice(ego_vehicle, parameters["cm"]["max_range_vehicle"], 2)
             env.add_device(ped_device)
             env.add_device(vehicle_device)
         while True:
@@ -378,33 +394,30 @@ def run_simulation(client, sync=True):
                         dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
                         if dist < 30.0:
                             braking = True
-                            vehicle_control.brake = 1
-                            vehicle_control.throttle = 0
+                            vehicle_control.brake = 1.0
+                            vehicle_control.throttle = 0.0
 
             if args.connected_mobility:
+                # TODO.
                 if vehicle_device.deceleration > 0.005:
-                    # TODO: Release after danger is over.
                     braking = True
                     vehicle_control.brake = vehicle_device.deceleration
-                    vehicle_control.throttle = 0
-            # print(vehicle_control)
+                    vehicle_control.throttle = 0.0
+
+            if ego_vehicle.get_location().x < -40.0:
+                vehicle_control.brake = 1.0
+                vehicle_control.throttle = 0.0
             ego_vehicle.apply_control(vehicle_control)
 
-            if velocity < 0.1 and braking and not dist_printed:
-                dist_printed = True
-                ego_loc = ego_vehicle.get_location()
-                ped_loc = pedestrian.get_location()
-                dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
-                print("Vehicle-Pedestrian Distance: {}".format(dist))
-
-            if dist_printed:
+            if args.connected_mobility and ped_device.deceleration > 0.0:
+                pedestrian_control.speed = 0.0
+            elif velocity < 0.1 and braking:
                 pedestrian_control.direction.x = 0
                 pedestrian_control.direction.y = 0
-                pedestrian.apply_control(pedestrian_control)
             elif pedestrian.get_location().x >= -3.8:
                 pedestrian_control.direction.x = 0
                 pedestrian_control.direction.y = 1
-                pedestrian.apply_control(pedestrian_control)
+            pedestrian.apply_control(pedestrian_control)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

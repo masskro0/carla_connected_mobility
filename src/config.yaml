@@ -7,6 +7,10 @@ carla:
     screen_height: 640
     screen_width: 800
     scaling_factor: 100.0
+    max_deceleration: 200    # TODO: no idea how to get the right value.
+    vis_trajectory_window_x: 800
+    vis_trajectory_window_y: 480
+    vis_point_radius: 6
 yolo:
     device: "cuda:0"
     data: "weights/coco.yaml"
@@ -18,3 +22,5 @@ yolo:
     max_det: 1000
 cm:     # Connected Mobility.
     max_time_diff: 1.0
+    max_range_vehicle: 55
+    max_range_pedestrian: 25
