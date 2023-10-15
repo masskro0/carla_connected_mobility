@@ -109,14 +109,15 @@ def run_simulation(clnt, params, sync=True):
                 env.display_trajectories(ego_vehicle)
                 env.check_broadcasts()
 
-            # ------------------------------------------------------------------------------------------
-            # Under construction.
-            
-            velocity = ego_vehicle.get_velocity().length() * 3.6
-            if velocity < 50.0 and not braking:
+            # Keep a constant velocity of 50km/h. Could be improved with a PID controller.
+            ego_velocity = ego_vehicle.get_velocity().length() * 3.6
+            if ego_velocity < 50.0 and not braking:
                 vehicle_control.throttle = 0.7
             else:
                 vehicle_control.throttle = 0.0
+
+            # ------------------------------------------------------------------------------------------
+            # Under construction.
 
             if not args.connected_mobility:
                 for person in cam.people_list:
@@ -144,17 +145,16 @@ def run_simulation(clnt, params, sync=True):
                 vehicle_control.throttle = 0.0
             ego_vehicle.apply_control(vehicle_control)
 
-            if args.connected_mobility and ped_device.deceleration > 0.0:
+            # ------------------------------------------------------------------------------------------
+
+            if (args.connected_mobility and ped_device.deceleration > 0.0) or ego_velocity < 0.1:
+                # Make the pedestrian stop.
                 pedestrian_control.speed = 0.0
-            elif velocity < 0.1 and braking:
-                pedestrian_control.direction.x = 0
-                pedestrian_control.direction.y = 0
             elif pedestrian.get_location().x >= -3.8:
+                # Make the pedestrian cross the road near the parked car.
                 pedestrian_control.direction.x = 0
                 pedestrian_control.direction.y = 1
             pedestrian.apply_control(pedestrian_control)
-
-            # ------------------------------------------------------------------------------------------
 
             # Terminate code when hitting 'q' or 'ESC'.
             for event in pygame.event.get():

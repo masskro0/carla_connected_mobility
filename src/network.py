@@ -105,7 +105,7 @@ class NetworkEnvironment:
         self.devices = []
         self.surface = None     # The surface which we draw things onto.
         self.display_man = display_man
-        self.display_man.add_sensor(self)
+        self.display_man.add_window(self)
         self.display_pos = display_pos
         self.stopping_actor_id = None
         self.vis_line_width = vis_line_width
