@@ -13,6 +13,8 @@ carla:
     vis_trajectory_window_x: 800
     vis_trajectory_window_y: 480
     vis_point_radius: 6
+    vis_scaling_factor_x: 4
+    vis_scaling_factor_y: 20
 yolo:
     device: "cuda:0"
     data: "weights/coco.yaml"

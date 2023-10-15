@@ -1,4 +1,5 @@
 import sys
+sys.path.append("../")
 
 import numpy as np
 import torch
@@ -8,9 +9,6 @@ from src.yolov5.utils.augmentations import letterbox
 from src.yolov5.utils.general import check_img_size, non_max_suppression, scale_boxes
 from src.yolov5.utils.plots import Annotator, colors
 from src.yolov5.utils.torch_utils import select_device
-
-
-sys.path.append("../")
 
 
 def load_model(device, data, weights, half, img_size):

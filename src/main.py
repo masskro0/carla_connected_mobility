@@ -86,7 +86,9 @@ def run_simulation(client, parameters, sync=True):
         if args.connected_mobility:
             env = NetworkEnvironment(display_manager, [1, 0], parameters["carla"]["vis_trajectory_window_x"],
                                      parameters["carla"]["vis_trajectory_window_y"],
-                                     parameters["carla"]["vis_point_radius"])
+                                     parameters["carla"]["vis_point_radius"],
+                                     parameters["carla"]["vis_scaling_factor_x"],
+                                     parameters["carla"]["vis_scaling_factor_y"])
 
             ped_device = NetworkDevice(pedestrian, parameters["cm"]["max_range_pedestrian"], 1, 1,
                                        parameters["carla"]["scaling_factor"], parameters["cm"]["max_time_diff"])
