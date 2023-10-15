@@ -2,40 +2,37 @@
 
 import argparse
 import math
-import sys
 import yaml
 
 import carla
 import pygame
-from pygame.locals import K_ESCAPE
-from pygame.locals import K_q
+from pygame.locals import K_ESCAPE, K_q
 
 from network import NetworkDevice, NetworkEnvironment
 from utils import DisplayManager, YOLOCamera
 
 
-def run_simulation(client, parameters, sync=True):
+def run_simulation(clnt, params, sync=True):
     # Display Manager organizes everything we would like to see in a separate window.
     if args.connected_mobility:
-        vis_y = parameters["carla"]["vis_trajectory_window_y"]
-        display_manager = DisplayManager(grid_size=[2, 1], window_size=[parameters["carla"]["screen_width"],
-                                                                        parameters["carla"]["screen_height"] + vis_y])
+        vis_y = params["carla"]["vis_trajectory_window_y"]
+        display_manager = DisplayManager(grid_size=[2, 1], window_size=[params["carla"]["screen_width"],
+                                                                        params["carla"]["screen_height"] + vis_y])
     else:
-        display_manager = DisplayManager(grid_size=[1, 1], window_size=[parameters["carla"]["screen_width"],
-                                                                        parameters["carla"]["screen_height"]])
+        display_manager = DisplayManager(grid_size=[1, 1], window_size=[params["carla"]["screen_width"],
+                                                                        params["carla"]["screen_height"]])
 
-    world = client.get_world()
+    world = clnt.get_world()
     original_settings = world.get_settings()
     actor_list = []
-
     try:
         # Simulation settings.
         if sync:
-            traffic_manager = client.get_trafficmanager(8000)
+            traffic_manager = clnt.get_trafficmanager(8000)
             settings = world.get_settings()
             traffic_manager.set_synchronous_mode(True)
             settings.synchronous_mode = True
-            # settings.fixed_delta_seconds = 0.02    # Everything is too fast
+            # settings.fixed_delta_seconds = 0.02    # Everything is too fast.
             world.apply_settings(settings)
 
         # Set spectator viewpoint.
@@ -46,7 +43,7 @@ def run_simulation(client, parameters, sync=True):
         spectator.set_transform(transform)
 
         # Spawn ego vehicle.
-        vehicle_blueprint = world.get_blueprint_library().find(parameters["carla"]["vehicle_model"])
+        vehicle_blueprint = world.get_blueprint_library().find(params["carla"]["vehicle_model"])
         ego_location = carla.Location(x=65, y=130.5, z=0.600000)
         ego_rotation = carla.Rotation(pitch=0.0, yaw=-179.494202, roll=0.0)
         ego_position = carla.Transform(ego_location, ego_rotation)
@@ -54,7 +51,7 @@ def run_simulation(client, parameters, sync=True):
         actor_list.append(ego_vehicle)
 
         # Spawn child.
-        pedestrian_blueprint = world.get_blueprint_library().find(parameters["carla"]["pedestrian_model"])
+        pedestrian_blueprint = world.get_blueprint_library().find(params["carla"]["pedestrian_model"])
         pedestrian_location = carla.Location(x=-10.0, y=125.0, z=0.6)
         pedestrian_rotation = carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)
         pedestrian_position = carla.Transform(pedestrian_location, pedestrian_rotation)
@@ -63,11 +60,10 @@ def run_simulation(client, parameters, sync=True):
 
         # Attach camera to vehicle and load YOLO model.
         cam = YOLOCamera(world, display_manager, carla.Transform(carla.Location(x=0.5, z=1.5)), ego_vehicle, [0, 0],
-                         parameters["yolo"]["device"], parameters["yolo"]["data"], parameters["yolo"]["weights"],
-                         parameters["yolo"]["half"], parameters["yolo"]["img_size"],
-                         parameters["carla"]["camera_width"], parameters["carla"]["camera_height"],
-                         parameters["yolo"]["conf_thres"], parameters["yolo"]["iou_thres"],
-                         parameters["yolo"]["max_det"])
+                         params["yolo"]["device"], params["yolo"]["data"], params["yolo"]["weights"],
+                         params["yolo"]["half"], params["yolo"]["img_size"], params["carla"]["camera_width"],
+                         params["carla"]["camera_height"], params["yolo"]["conf_thres"], params["yolo"]["iou_thres"],
+                         params["yolo"]["max_det"])
         while not cam.ready:
             pass
 
@@ -84,19 +80,17 @@ def run_simulation(client, parameters, sync=True):
 
         # Attach network devices to pedestrian and vehicle, if we have V2P communication.
         if args.connected_mobility:
-            env = NetworkEnvironment(display_manager, [1, 0], parameters["carla"]["vis_line_width"],
-                                     parameters["carla"]["vis_trajectory_window_x"],
-                                     parameters["carla"]["vis_trajectory_window_y"],
-                                     parameters["carla"]["vis_point_radius"],
-                                     parameters["carla"]["vis_scaling_factor_x"],
-                                     parameters["carla"]["vis_scaling_factor_y"],
-                                     parameters["carla"]["vis_sending_range"])
+            env = NetworkEnvironment(display_manager, [1, 0], params["carla"]["vis_line_width"],
+                                     params["carla"]["vis_trajectory_window_x"],
+                                     params["carla"]["vis_trajectory_window_y"], params["carla"]["vis_point_radius"],
+                                     params["carla"]["vis_scaling_factor_x"], params["carla"]["vis_scaling_factor_y"],
+                                     params["carla"]["vis_sending_range"])
 
-            ped_device = NetworkDevice(pedestrian, parameters["cm"]["max_range_pedestrian"], 1, 1,
-                                       parameters["carla"]["scaling_factor"], parameters["cm"]["max_time_diff"])
-            vehicle_device = NetworkDevice(ego_vehicle, parameters["cm"]["max_range_vehicle"], 2,
-                                           parameters["carla"]["max_deceleration"],
-                                           parameters["carla"]["scaling_factor"], parameters["cm"]["max_time_diff"])
+            ped_device = NetworkDevice(pedestrian, params["cm"]["max_range_pedestrian"], 1, 1,
+                                       params["carla"]["scaling_factor"], params["cm"]["max_time_diff"])
+            vehicle_device = NetworkDevice(ego_vehicle, params["cm"]["max_range_vehicle"], 2,
+                                           params["carla"]["max_deceleration"], params["carla"]["scaling_factor"],
+                                           params["cm"]["max_time_diff"])
             env.add_device(ped_device)
             env.add_device(vehicle_device)
 
@@ -115,6 +109,9 @@ def run_simulation(client, parameters, sync=True):
                 env.display_trajectories(ego_vehicle)
                 env.check_broadcasts()
 
+            # ------------------------------------------------------------------------------------------
+            # Under construction.
+            
             velocity = ego_vehicle.get_velocity().length() * 3.6
             if velocity < 50.0 and not braking:
                 vehicle_control.throttle = 0.7
@@ -157,6 +154,9 @@ def run_simulation(client, parameters, sync=True):
                 pedestrian_control.direction.y = 1
             pedestrian.apply_control(pedestrian_control)
 
+            # ------------------------------------------------------------------------------------------
+
+            # Terminate code when hitting 'q' or 'ESC'.
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     call_exit = True
@@ -164,24 +164,28 @@ def run_simulation(client, parameters, sync=True):
                     if event.key == K_ESCAPE or event.key == K_q:
                         call_exit = True
                         break
-
             if call_exit:
                 break
 
     finally:
+        # Cleanup everything when the code terminates.
         if display_manager:
             display_manager.destroy()
-        client.apply_batch([carla.command.DestroyActor(x) for x in actor_list])
+        clnt.apply_batch([carla.command.DestroyActor(x) for x in actor_list])
         world.apply_settings(original_settings)
 
 
 if __name__ == '__main__':
+    # Get parameters from the config file.
     with open("config.yaml", "r") as cfg_file:
         argparser = argparse.ArgumentParser(description="CARLA Autonomous Driving vs Connected Mobility")
         argparser.add_argument("--connected_mobility", action="store_true", help="Enable connected mobility")
         args = argparser.parse_args()
         parameters = yaml.safe_load(cfg_file)
 
+        # Create and connected the client to the Carla simulator.
         client = carla.Client(parameters["carla"]["host"], parameters["carla"]["port"])
         client.set_timeout(parameters["carla"]["timeout"])
+
+        # Run this scenario.
         run_simulation(client, parameters)
