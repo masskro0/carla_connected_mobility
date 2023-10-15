@@ -8,6 +8,8 @@ from yolov5.yolo_interface import detect, load_model
 
 
 class DisplayManager:
+    """Display Manager organizes everything we would like to see in a separate window."""
+
     def __init__(self, grid_size, window_size):
         pygame.init()
         pygame.font.init()

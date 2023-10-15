@@ -10,11 +10,13 @@ carla:
     screen_width: 800
     scaling_factor: 100.0
     max_deceleration: 200    # TODO: no idea how to get the right value.
+    vis_line_width: 3
     vis_trajectory_window_x: 800
     vis_trajectory_window_y: 480
     vis_point_radius: 6
     vis_scaling_factor_x: 4
     vis_scaling_factor_y: 20
+    vis_sending_range: 2
 yolo:
     device: "cuda:0"
     data: "weights/coco.yaml"

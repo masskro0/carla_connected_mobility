@@ -88,16 +88,19 @@ class NetworkDevice:
 class NetworkEnvironment:
     """Manages all network devices and is responsible that other devices receive information from the actors."""
 
-    def __init__(self, display_man, display_pos, vis_trajectory_window_x: int, vis_trajectory_window_y: int,
-                 vis_point_radius: int, vis_scaling_factor_x: int, vis_scaling_factor_y: int):
+    def __init__(self, display_man, display_pos, vis_line_width: int, vis_trajectory_window_x: int,
+                 vis_trajectory_window_y: int, vis_point_radius: int, vis_scaling_factor_x: int,
+                 vis_scaling_factor_y: int, vis_sending_range: int):
         """
         :param display_man: Display manager instance.
         :param display_pos: Grid position inside the display manager.
+        :param vis_line_width: Line width of the trajectory for the trajectory visualizer.
         :param vis_trajectory_window_x: Window width of the trajectory visualizer.
         :param vis_trajectory_window_y: Window height of the trajectory visualizer.
         :param vis_point_radius: Point radius of the actor positions and trajectory point.
         :param vis_scaling_factor_x: Stretches x-directions by this factor for the trajectory visualizer.
         :param vis_scaling_factor_y: Stretches y-directions by this factor for the trajectory visualizer.
+        :param vis_sending_range: Line radius for the sending range inside the trajectory visualizer.
         """
         self.devices = []
         self.surface = None     # The surface which we draw things onto.
@@ -105,11 +108,13 @@ class NetworkEnvironment:
         self.display_man.add_sensor(self)
         self.display_pos = display_pos
         self.stopping_actor_id = None
+        self.vis_line_width = vis_line_width
         self.vis_trajectory_window_x = vis_trajectory_window_x
         self.vis_trajectory_window_y = vis_trajectory_window_y
         self.vis_point_radius = vis_point_radius
         self.vis_scaling_factor_x = vis_scaling_factor_x
         self.vis_scaling_factor_y = vis_scaling_factor_y
+        self.vis_sending_range = vis_sending_range
 
     def add_device(self, device: NetworkDevice):
         """Registers a network device.
@@ -191,12 +196,12 @@ class NetworkEnvironment:
                 for (x1, y1), (x2, y2) in zip(next_coords, last_coords):
                     p1 = (round(x1), round(y1))
                     p2 = (round(x2), round(y2))
-                    pygame.draw.line(self.surface, color, p1, p2, 3)
+                    pygame.draw.line(self.surface, color, p1, p2, self.vis_line_width)
 
                 # Draw position of actor and maximum sending range.
                 pygame.draw.circle(self.surface, color, start, self.vis_point_radius)
                 pygame.draw.circle(self.surface, color, start, radius=dev.max_range * self.vis_scaling_factor_x,
-                                   width=1)
+                                   width=self.vis_sending_range)
                 if dev.intersection_point is not None:
                     # Draw intersection point. Green: OK, red: critical.
                     color = "green" if not dev.critical else "red"
