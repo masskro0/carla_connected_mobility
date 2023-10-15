@@ -489,7 +489,7 @@ class DetectMultiBackend(nn.Module):
         elif triton:  # NVIDIA Triton Inference Server
             LOGGER.info(f'Using {w} as Triton Inference Server...')
             check_requirements('tritonclient[all]')
-            from utils.triton import TritonRemoteModel
+            from src.utils import TritonRemoteModel
             model = TritonRemoteModel(url=w)
             nhwc = model.runtime.startswith('tensorflow')
         else:

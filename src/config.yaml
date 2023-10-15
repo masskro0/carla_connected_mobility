@@ -1,4 +1,6 @@
 carla:
+    camera_width: 800
+    camera_height: 640
     host: "127.0.0.1"
     port: 2000
     timeout: 5.0

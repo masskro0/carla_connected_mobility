@@ -56,8 +56,8 @@ def notebook_init(verbose=True):
 
     from ultralytics.yolo.utils.checks import check_requirements
 
-    from utils.general import check_font, is_colab
-    from utils.torch_utils import select_device  # imports
+    from src.utils import check_font, is_colab
+    from src.utils import select_device  # imports
 
     check_font()
 
