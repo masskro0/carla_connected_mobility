@@ -1,17 +1,19 @@
 carla:
-    camera_width: 800
-    camera_height: 640
+    vehicle_cam_width: 800
+    vehicle_cam_height: 640
+    pedestrian_cam_width: 800
+    pedestrian_cam_height: 400
     host: "127.0.0.1"
     port: 2000
     timeout: 5.0
     vehicle_model: "vehicle.audi.etron"
     pedestrian_model: "walker.pedestrian.0011"
-    screen_height: 640
+    screen_height: 1080
     screen_width: 800
     scaling_factor: 100.0
     max_deceleration: 200    # TODO: no idea how to get the right value.
     vis_line_width: 3
-    vis_trajectory_window_x: 800
+    vis_trajectory_window_x: 1040
     vis_trajectory_window_y: 480
     vis_point_radius: 6
     vis_scaling_factor_x: 4
@@ -27,6 +29,7 @@ yolo:
     iou_thres: 0.5
     max_det: 1000
 cm:     # Connected Mobility.
+    deceleration_threshold: 0.005
     max_time_diff: 1.0
     max_range_vehicle: 55
     max_range_pedestrian: 25

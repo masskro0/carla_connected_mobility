@@ -9,18 +9,18 @@ import pygame
 from pygame.locals import K_ESCAPE, K_q
 
 from network import NetworkDevice, NetworkEnvironment
-from utils import DisplayManager, YOLOCamera
+from utils import DisplayManager, PedestrianCamera, YOLOCamera
 
 
 def run_simulation(clnt, params, sync=True):
     # Display Manager organizes everything we would like to see in a separate window.
     if args.connected_mobility:
-        vis_y = params["carla"]["vis_trajectory_window_y"]
-        display_manager = DisplayManager(grid_size=[2, 1], window_size=[params["carla"]["screen_width"],
-                                                                        params["carla"]["screen_height"] + vis_y])
+        vis_x = params["carla"]["vis_trajectory_window_y"]
+        display_manager = DisplayManager(window_size=[params["carla"]["screen_width"] + vis_x,
+                                                      params["carla"]["screen_height"]])
     else:
-        display_manager = DisplayManager(grid_size=[1, 1], window_size=[params["carla"]["screen_width"],
-                                                                        params["carla"]["screen_height"]])
+        display_manager = DisplayManager(window_size=[params["carla"]["screen_width"],
+                                                      params["carla"]["screen_height"]])
 
     world = clnt.get_world()
     original_settings = world.get_settings()
@@ -59,13 +59,17 @@ def run_simulation(clnt, params, sync=True):
         actor_list.append(pedestrian)
 
         # Attach camera to vehicle and load YOLO model.
-        cam = YOLOCamera(world, display_manager, carla.Transform(carla.Location(x=0.5, z=1.5)), ego_vehicle, [0, 0],
+        cam = YOLOCamera(world, display_manager, carla.Transform(carla.Location(x=0.5, z=1.5)), ego_vehicle, 0,
                          params["yolo"]["device"], params["yolo"]["data"], params["yolo"]["weights"],
-                         params["yolo"]["half"], params["yolo"]["img_size"], params["carla"]["camera_width"],
-                         params["carla"]["camera_height"], params["yolo"]["conf_thres"], params["yolo"]["iou_thres"],
-                         params["yolo"]["max_det"])
+                         params["yolo"]["half"], params["yolo"]["img_size"], params["carla"]["vehicle_cam_width"],
+                         params["carla"]["vehicle_cam_height"], params["yolo"]["conf_thres"],
+                         params["yolo"]["iou_thres"], params["yolo"]["max_det"])
         while not cam.ready:
             pass
+
+        ped_cam = PedestrianCamera(world, display_manager, carla.Transform(carla.Location(x=0.1, z=1.0)), pedestrian,
+                                   1, params["carla"]["pedestrian_cam_width"],
+                                   params["carla"]["pedestrian_cam_height"])
 
         # Initialize vehicle control.
         vehicle_control: carla.VehicleControl = carla.VehicleControl()
@@ -80,7 +84,7 @@ def run_simulation(clnt, params, sync=True):
 
         # Attach network devices to pedestrian and vehicle, if we have V2P communication.
         if args.connected_mobility:
-            env = NetworkEnvironment(display_manager, [1, 0], params["carla"]["vis_line_width"],
+            env = NetworkEnvironment(display_manager, 2, params["carla"]["vis_line_width"],
                                      params["carla"]["vis_trajectory_window_x"],
                                      params["carla"]["vis_trajectory_window_y"], params["carla"]["vis_point_radius"],
                                      params["carla"]["vis_scaling_factor_x"], params["carla"]["vis_scaling_factor_y"],
@@ -93,6 +97,8 @@ def run_simulation(clnt, params, sync=True):
                                            params["cm"]["max_time_diff"])
             env.add_device(ped_device)
             env.add_device(vehicle_device)
+
+        display_manager.calc_offsets()
 
         # Simulation loop.
         call_exit = False
@@ -128,26 +134,27 @@ def run_simulation(clnt, params, sync=True):
                         ego_loc = ego_vehicle.get_location()
                         ped_loc = pedestrian.get_location()
                         dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
+                        print(person)
                         if dist < 30.0:
                             braking = True
                             vehicle_control.brake = 1.0
                             vehicle_control.throttle = 0.0
+            # ------------------------------------------------------------------------------------------
 
             if args.connected_mobility:
-                # TODO.
-                if vehicle_device.deceleration > 0.005:
+                # Do not brake immediately, only after it gets "critical".
+                if vehicle_device.deceleration > params["cm"]["deceleration_threshold"]:
                     braking = True
                     vehicle_control.brake = vehicle_device.deceleration
                     vehicle_control.throttle = 0.0
 
+            # Stop the vehicle after a certain point, otherwise it crashes against the tree.
             if ego_vehicle.get_location().x < -40.0:
                 vehicle_control.brake = 1.0
                 vehicle_control.throttle = 0.0
             ego_vehicle.apply_control(vehicle_control)
 
-            # ------------------------------------------------------------------------------------------
-
-            if (args.connected_mobility and ped_device.deceleration > 0.0) or ego_velocity < 0.1:
+            if (args.connected_mobility and ped_device.deceleration > 0.0) or (ego_velocity < 0.1 and braking):
                 # Make the pedestrian stop.
                 pedestrian_control.speed = 0.0
             elif pedestrian.get_location().x >= -3.8:

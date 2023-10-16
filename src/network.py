@@ -105,7 +105,7 @@ class NetworkEnvironment:
         self.devices = []
         self.surface = None     # The surface which we draw things onto.
         self.display_man = display_man
-        self.display_man.add_window(self)
+        self.display_man.add_window(self, vis_trajectory_window_x, vis_trajectory_window_y)
         self.display_pos = display_pos
         self.stopping_actor_id = None
         self.vis_line_width = vis_line_width
@@ -137,12 +137,13 @@ class NetworkEnvironment:
                 j += 1
 
     def display_trajectories(self, ego_vehicle):
-        """Display trajectories of all actors relative to the ego vehicle (the point of interest).
+        # TODO: View of pedestrian: show mobile with warning message.
+        """Display trajectories of all awctors relative to the ego vehicle (the point of interest).
         :param ego_vehicle: Carla ego vehicle actor.
         """
         if self.display_man.render_enabled():
-            # Initialize drawing surface.
-            self.surface = pygame.surface.Surface((self.vis_trajectory_window_x, self.vis_trajectory_window_y))
+            # Initialize drawing surface. X & y are swapped because I rotate the surface.
+            self.surface = pygame.surface.Surface((self.vis_trajectory_window_x, self.vis_trajectory_window_y), pygame.SRCALPHA)
             self.surface.fill((255, 255, 255))
 
             ego_pos = ego_vehicle.get_location()
@@ -166,6 +167,8 @@ class NetworkEnvironment:
                     start = (int(start.x - ego_pos[0] + self.vis_trajectory_window_x // 2),
                              int(start.y - ego_pos[1] + self.vis_trajectory_window_y // 2))
                     end = dev.actor.get_transform().get_forward_vector() * (self.vis_trajectory_window_x / 2)
+                #rotated = np.rot90([[0, 0], [end.x, end.y]])
+                #end = (int(start[0] + rotated[1][0]), int(start[1] + rotated[1][1]))
                 end = (int(start[0] + end.x), int(start[1] + end.y))
 
                 if self.stopping_actor_id is not None:
@@ -212,6 +215,7 @@ class NetworkEnvironment:
                             + self.vis_trajectory_window_y // 2))
                     pygame.draw.circle(self.surface, color, start, self.vis_point_radius)
 
+            self.surface = pygame.transform.rotate(self.surface, -90)
             pygame.display.flip()
             if len(detected_hazards) == 0:
                 return
@@ -223,7 +227,7 @@ class NetworkEnvironment:
     def render(self):
         """Renders a new frame in every step to visualize the onboard camera image and trajectories."""
         if self.surface is not None:
-            offset = self.display_man.get_display_offset(self.display_pos)
+            offset = self.display_man.offsets[self.display_pos]
             self.display_man.display.blit(self.surface, offset)
 
     def destroy(self):
