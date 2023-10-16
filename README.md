@@ -4,7 +4,9 @@ A simple scenario to demonstrate where an autonomous vehicle cannot avoid a cras
 This scenario is made for demonstration purposes only.
 
 ## Autonomous Driving Mode
-https://github.com/masskro0/carla_connected_mobility/assets/49821640/9fd23455-c56e-4ea5-b1e1-007e9ed57717
+https://github.com/masskro0/carla_connected_mobility/assets/49821640/02e99d7f-c8cd-4c20-af03-fa35d3de3a4b
+
+
 
 By using autonomous driving only, the vehicle cannot avoid the crash.
 <br><br>
