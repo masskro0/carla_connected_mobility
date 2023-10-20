@@ -137,7 +137,6 @@ class NetworkEnvironment:
                 j += 1
 
     def display_trajectories(self, ego_vehicle):
-        # TODO: View of pedestrian: show mobile with warning message.
         """Display trajectories of all awctors relative to the ego vehicle (the point of interest).
         :param ego_vehicle: Carla ego vehicle actor.
         """
