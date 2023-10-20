@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import carla
 import numpy as np
@@ -87,6 +88,13 @@ class PedestrianCamera:
         self.camera_height = camera_height
         self.camera = self.init_camera(transform, attached)
         self.display_man.add_window(self, self.camera_width, self.camera_height)
+        file_path = pathlib.Path(__file__).parent.resolve()
+        phone_path = os.path.join(file_path, "images", "phone_downscaled.jpg")
+        self.phone_img = pygame.image.load(phone_path)
+        alert_path = os.path.join(file_path, "images", "phone_alert.jpg")
+        self.alert_img = pygame.image.load(alert_path)
+        self.selected = 0
+        self.selected_img = self.phone_img
 
     def init_camera(self, transform, attached):
         """Initializes the Carla camera, attaches it to the passed Carla actor, initializes the YOLO model.
@@ -101,6 +109,14 @@ class PedestrianCamera:
         camera = self.world.spawn_actor(camera_bp, transform, attach_to=attached)
         camera.listen(self.callback)
         return camera
+
+    def switch_img(self):
+        if self.selected == 0:
+            self.selected_img = self.alert_img
+            self.selected = 1
+        else:
+            self.selected_img = self.phone_img
+            self.selected = 0
 
     def callback(self, image):
         """Camera callback function: performs a detection on the new frame.
@@ -122,6 +138,8 @@ class PedestrianCamera:
         if self.surface is not None:
             offset = self.display_man.offsets[self.display_pos]
             self.display_man.display.blit(self.surface, offset)
+            self.display_man.display.blit(self.selected_img, (offset[0] + self.camera_width // 1.6,
+                                                              offset[1] + self.camera_height // 2))
 
     def destroy(self):
         """Cleanup when the code gets terminated."""

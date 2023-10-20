@@ -103,6 +103,7 @@ def run_simulation(clnt, params, sync=True):
         # Simulation loop.
         call_exit = False
         braking = False
+        switched_img = False
         while True:
             if sync:
                 world.tick()
@@ -155,6 +156,9 @@ def run_simulation(clnt, params, sync=True):
             if (args.connected_mobility and ped_device.deceleration > 0.0) or (ego_velocity < 0.1 and braking):
                 # Make the pedestrian stop.
                 pedestrian_control.speed = 0.0
+                if not switched_img:
+                    ped_cam.switch_img()
+                    switched_img = True
             elif pedestrian.get_location().x >= -3.8:
                 # Make the pedestrian cross the road near the parked car.
                 pedestrian_control.direction.x = 0
