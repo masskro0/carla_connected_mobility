@@ -122,24 +122,22 @@ def run_simulation(clnt, params, sync=True):
             else:
                 vehicle_control.throttle = 0.0
 
-            # ------------------------------------------------------------------------------------------
-            # Under construction.
-
             if not args.connected_mobility:
-                for person in cam.people_list:
-                    # TODO: determine whether person is on the road (and relevant).
-                    on_the_road = True
+                for xyxy in cam.people_list:
+                    on_the_road = False
+                    min_x = params["yolo"]["x_diff"]
+                    max_x = params["carla"]["vehicle_cam_width"] - min_x
+                    max_y = params["carla"]["vehicle_cam_height"]
+                    min_y = max_y - params["yolo"]["y_diff"]
+                    person_coords = [xyxy[0].cpu(), xyxy[1].cpu(), xyxy[2].cpu(), xyxy[3].cpu()]
+                    if person_coords[0] >= min_x and person_coords[1] >= min_y and person_coords[2] <= max_x \
+                            and person_coords[3] <= max_y:
+                        on_the_road = True
+
                     if on_the_road and not braking:
-                        # TODO: ofc this is crap.
-                        ego_loc = ego_vehicle.get_location()
-                        ped_loc = pedestrian.get_location()
-                        dist = math.sqrt((ped_loc.x - ego_loc.x) ** 2 + (ped_loc.y - ego_loc.y) ** 2)
-                        print(person)
-                        if dist < 30.0:
-                            braking = True
-                            vehicle_control.brake = 1.0
-                            vehicle_control.throttle = 0.0
-            # ------------------------------------------------------------------------------------------
+                        braking = True
+                        vehicle_control.brake = 1.0
+                        vehicle_control.throttle = 0.0
 
             if args.connected_mobility:
                 # Do not brake immediately, only after it gets "critical".

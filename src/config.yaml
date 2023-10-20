@@ -25,9 +25,11 @@ yolo:
     weights: "weights/yolov5m.pt"
     half: false
     img_size: 640
-    conf_thres: 0.55
+    conf_thres: 0.7
     iou_thres: 0.5
     max_det: 1000
+    x_diff: 100
+    y_diff: 370
 cm:     # Connected Mobility.
     deceleration_threshold: 0.005
     max_time_diff: 1.0
